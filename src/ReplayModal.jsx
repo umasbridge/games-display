@@ -82,6 +82,8 @@ export default function ReplayModal({ board, result, playerNames, onClose }) {
           },
           ddsPath: DDS_PATH,
           navEl: navRef.current,
+          ddOn: true,
+          hideDdButton: true,
         });
       })
       .catch(err => setError(String(err?.message || err)));

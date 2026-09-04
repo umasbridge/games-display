@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { IpsPlayer } from 'ips';
 
 const SUIT_SYM = { S: '♠', H: '♥', D: '♦', C: '♣' };
@@ -19,6 +19,7 @@ function UnreadBadge({ count }) {
 
 export default function HandDiagram({ board, result, otherRoom, participantMap, ourParticipantId, onOtherRoom, onTraveller, onNotes, notesLoading, notesUnread, isTeams, boardNumber, isImpPairs }) {
   const ipsControllerRef = useRef(null);
+  const [ddPlaying, setDdPlaying] = useState(false);
   const vul = board.vulnerability;
   const invalidLead = result && hasInvalidOpeningLead(result);
   const nsTeamName = isTeams ? participantMap?.[result?.ns_participant_id]?.name : null;
@@ -96,37 +97,39 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
     </div>
   );
 
+  const btnStyle = { boxSizing: 'border-box', height: 28, fontSize: '0.8rem', lineHeight: '28px', padding: '0 10px', border: 'none', borderRadius: 4, cursor: 'pointer', color: '#fff' };
+
   const buttonsBlock = (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', rowGap: 6, width: '100%', marginTop: 6 }}>
-      <div style={{ justifySelf: 'start' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+      {!ddPlaying && (
         <button type="button" onClick={() => ipsControllerRef.current?.toggleDd()}
-          style={{ boxSizing: 'border-box', height: 28, fontSize: '0.8rem', lineHeight: '28px', padding: '0 10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+          style={{ ...btnStyle, background: '#16a34a' }}>
           DD
         </button>
-      </div>
-      <div style={{ justifySelf: 'end' }}>
-        {onTraveller && (
-          <button onClick={onTraveller}
-            style={{ boxSizing: 'border-box', height: 28, fontSize: '0.8rem', lineHeight: '28px', padding: '0 10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-            Traveller
-          </button>
-        )}
-      </div>
-      <div style={{ justifySelf: 'start' }}>
-        <button type="button"
-          style={{ boxSizing: 'border-box', height: 28, fontSize: '0.8rem', lineHeight: '28px', padding: '0 10px', background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-          Analysis
+      )}
+      {result?.lin && (
+        <button type="button" onClick={() => setDdPlaying(p => !p)}
+          style={{ ...btnStyle, background: ddPlaying ? '#6b7280' : '#7c3aed' }}>
+          {ddPlaying ? '◀ View' : '▶ Play'}
         </button>
-      </div>
-      <div style={{ justifySelf: 'end' }}>
-        {onNotes && (
-          <button onClick={onNotes} disabled={notesLoading}
-            style={{ boxSizing: 'border-box', height: 28, fontSize: '0.8rem', lineHeight: '28px', padding: '0 10px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', opacity: notesLoading ? 0.5 : 1, position: 'relative' }}>
-            {notesLoading ? '...' : 'Notes'}
-            <UnreadBadge count={notesUnread} />
-          </button>
-        )}
-      </div>
+      )}
+      {onTraveller && (
+        <button onClick={onTraveller}
+          style={{ ...btnStyle, background: '#2563eb' }}>
+          Traveller
+        </button>
+      )}
+      <button type="button"
+        style={{ ...btnStyle, background: '#0f766e' }}>
+        Analysis
+      </button>
+      {onNotes && (
+        <button onClick={onNotes} disabled={notesLoading}
+          style={{ ...btnStyle, background: '#7c3aed', opacity: notesLoading ? 0.5 : 1, position: 'relative' }}>
+          {notesLoading ? '...' : 'Notes'}
+          <UnreadBadge count={notesUnread} />
+        </button>
+      )}
     </div>
   );
 
@@ -163,7 +166,9 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
   } : null;
 
   const ipsPlayer = ipsBoardResult?.lin
-    ? <IpsPlayer boardResult={ipsBoardResult} mode="view" topRightOffset={otherRoomBlock ? 72 : 0} hideDdButton onPlayerReady={player => { ipsControllerRef.current = player; }} />
+    ? ddPlaying
+      ? <IpsPlayer boardResult={ipsBoardResult} mode="play" ddPlay autoStart hideDdButton direction={result?.declarer || 'S'} topRightOffset={otherRoomBlock ? 72 : 0} onPlayerReady={player => { ipsControllerRef.current = player; }} />
+      : <IpsPlayer boardResult={ipsBoardResult} mode="view" topRightOffset={otherRoomBlock ? 72 : 0} hideDdButton onPlayerReady={player => { ipsControllerRef.current = player; }} />
     : <div style={{ color: '#9ca3af', fontSize: '0.85rem', padding: '12px 0' }}>No play data available.</div>;
 
   return (
@@ -191,13 +196,15 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
             </div>
           )}
           {resultBlock}
-          {buttonsBlock}
         </div>
         {otherRoomBlock && (
           <div style={{ position: 'absolute', right: 0, top: 0, width: 132, fontSize: '0.8rem', zIndex: 3 }}>
             {otherRoomBlock}
           </div>
         )}
+      </div>
+      <div style={{ fontSize: '0.8rem', marginTop: 4 }}>
+        {buttonsBlock}
       </div>
     </div>
   );
