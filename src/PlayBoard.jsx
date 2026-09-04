@@ -1,6 +1,37 @@
 import { useRef, useMemo } from 'react';
 import { IpsPlayer } from 'ips';
 
+const SUIT_SYM = { S: '♠', H: '♥', D: '♦', C: '♣' };
+const SUIT_HEX = { H: '#c0241c', D: '#c0241c', S: '#111', C: '#2a7d0e' };
+
+function CompletionResultBox({ result }) {
+  if (!result) return null;
+  const denomDisplay = result.denomCode === 'N' ? 'NT' : (SUIT_SYM[result.denomCode] || result.denomCode);
+  const denomColor = SUIT_HEX[result.denomCode] || '#111';
+  const comparison = result.imps != null
+    ? ` (IMPs = ${result.imps > 0 ? '+' : ''}${result.imps})`
+    : result.mpPercent != null ? ` (MP% = ${result.mpPercent})` : '';
+  return (
+    <div style={{
+      position: 'absolute', left: 0, bottom: 44, zIndex: 3,
+      boxSizing: 'border-box', width: 'max-content', minWidth: 108,
+      padding: '4px 8px', border: '1px solid #e5e7eb', borderRadius: 5,
+      background: '#fff', color: '#1f2937',
+      fontFamily: 'ui-sans-serif, system-ui', fontSize: '0.82rem', fontWeight: 700,
+      whiteSpace: 'nowrap',
+    }}>
+      <div>
+        Result: {result.level}
+        <span style={{ color: denomColor }}>{denomDisplay}</span>
+        {result.doubled} {result.declarer} {result.resultText}
+      </div>
+      <div style={{ marginTop: 2, fontWeight: 600 }}>
+        Score: {result.score > 0 ? '+' : ''}{result.score}{comparison}
+      </div>
+    </div>
+  );
+}
+
 export default function PlayBoard({
   boardNumber,
   boardResult,
@@ -62,6 +93,8 @@ export default function PlayBoard({
                   <button type="button" onClick={onResults} style={{ ...btnStyle, background: '#0f766e' }}>Results</button>
                 </div>
               )}
+              {/* View mode: persist the result box that IPS shows at deal completion */}
+              {isView && <CompletionResultBox result={boardResult?.completed_result} />}
             </div>
             {/* View / dd-play mode: buttons below IPS player */}
             {(isView || isDdPlay) && (
