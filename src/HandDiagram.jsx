@@ -75,12 +75,12 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
   const resultBlock = result && (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 5, padding: '4px 8px', marginTop: 4 }}>
       {!result.passed_out && (
-        <div style={{ fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap' }}>
+        <div style={{ fontWeight: 700, marginBottom: 2 }}>
           {fmtContractColored(result)} <span style={{ color: '#6b7280', fontWeight: 400 }}>by {result.declarer}</span>
           {' '}{resultStr}
         </div>
       )}
-      <div style={{ whiteSpace: 'nowrap' }}>
+      <div>
         <span style={{ color: '#6b7280' }}>Score: </span>
         <span style={{ fontWeight: 700 }}>{scoreStr}</span>
         {mpPct != null && (
@@ -175,7 +175,7 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
     <div style={{ position: 'relative' }}>
       {boardNumber != null && (
         <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 4, color: '#1f2937' }}>
-          Board {boardNumber}{isTeams && (nsTeamName || ewTeamName) ? ':' : ''}
+          {typeof boardNumber === 'string' ? boardNumber : `Board ${boardNumber}`}{isTeams && (nsTeamName || ewTeamName) ? ':' : ''}
           {isTeams && nsTeamName && (
             <span style={{ marginLeft: 6, fontWeight: 500 }}>NS = {nsTeamName}</span>
           )}
@@ -187,18 +187,18 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
           </span>
         </div>
       )}
-      <div style={{ position: 'relative', display: 'inline-block', minWidth: 0 }}>
+      <div style={{ position: 'relative' }}>
         {ipsPlayer}
-        <div style={{ position: 'absolute', left: 0, bottom: 12, width: 'max-content', fontSize: '0.8rem', zIndex: 3 }}>
+        <div style={{ position: 'absolute', left: 0, bottom: 12, maxWidth: '34%', fontSize: '0.8rem', zIndex: 3 }}>
           {invalidLead && (
-            <div style={{ color: '#dc2626', fontWeight: 700, marginBottom: 3 }}>
+            <div style={{ color: '#dc2626', fontWeight: 700, marginBottom: 3, whiteSpace: 'nowrap' }}>
               Invalid lead: {fmtLead(result)}
             </div>
           )}
           {resultBlock}
         </div>
         {otherRoomBlock && (
-          <div style={{ position: 'absolute', right: 0, top: 0, width: 132, fontSize: '0.8rem', zIndex: 3 }}>
+          <div style={{ position: 'absolute', right: 0, top: 0, width: 'min(132px, 34%)', fontSize: '0.8rem', zIndex: 3 }}>
             {otherRoomBlock}
           </div>
         )}

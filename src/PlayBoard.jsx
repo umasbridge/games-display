@@ -14,11 +14,10 @@ function CompletionResultBox({ result }) {
   return (
     <div style={{
       position: 'absolute', left: 0, bottom: 44, zIndex: 3,
-      boxSizing: 'border-box', width: 'max-content', minWidth: 108,
+      boxSizing: 'border-box', maxWidth: '34%', minWidth: 108,
       padding: '4px 8px', border: '1px solid #e5e7eb', borderRadius: 5,
       background: '#fff', color: '#1f2937',
       fontFamily: 'ui-sans-serif, system-ui', fontSize: '0.82rem', fontWeight: 700,
-      whiteSpace: 'nowrap',
     }}>
       <div>
         Result: {result.level}
@@ -66,7 +65,7 @@ export default function PlayBoard({
       <div style={{ padding: '4px 8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
           <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>
-            Board {boardNumber}{(nsTeamName || ewTeamName) ? ':' : ''}
+            {typeof boardNumber === 'string' ? boardNumber : `Board ${boardNumber}`}{(nsTeamName || ewTeamName) ? ':' : ''}
             {nsTeamName && <span style={{ marginLeft: 6, fontWeight: 500 }}>NS = {nsTeamName}</span>}
             {ewTeamName && <span style={{ marginLeft: 10, fontWeight: 500 }}>EW = {ewTeamName}</span>}
           </span>
@@ -74,7 +73,7 @@ export default function PlayBoard({
 
         {boardResult?.lin ? (
           <>
-            <div style={{ position: 'relative', display: 'inline-block' }}>
+            <div style={{ position: 'relative' }}>
               <IpsPlayer
                 boardResult={ipsResult}
                 mode={isDdPlay ? 'play' : mode}
