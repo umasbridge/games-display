@@ -187,7 +187,7 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
           </span>
         </div>
       )}
-      <div style={{ position: 'relative' }}>
+      <div style={{ position: 'relative', width: 478, maxWidth: '100%' }}>
         {ipsPlayer}
         <div style={{ position: 'absolute', left: 0, bottom: 12, maxWidth: '34%', fontSize: '0.8rem', zIndex: 3 }}>
           {invalidLead && (
