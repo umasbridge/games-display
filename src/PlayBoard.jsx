@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import { IpsPlayer } from 'ips';
 
 const SUIT_SYM = { S: '♠', H: '♥', D: '♦', C: '♣' };
@@ -60,6 +60,19 @@ export default function PlayBoard({
 
   const btnStyle = { boxSizing: 'border-box', height: 28, fontSize: '0.8rem', lineHeight: '28px', padding: '0 10px', border: 'none', borderRadius: 4, cursor: 'pointer', color: '#fff' };
 
+  // Stable DOM element for the Results button injected into .pt-pos-bl in play mode.
+  // Uses a ref for the callback so it doesn't need to be recreated when onResults changes.
+  const onResultsRef = useRef(onResults);
+  useEffect(() => { onResultsRef.current = onResults; }, [onResults]);
+  const resultsElRef = useRef(null);
+  if (!isView && !isDdPlay && onResults && !resultsElRef.current) {
+    const btn = document.createElement('button');
+    btn.style.cssText = 'box-sizing:border-box;height:28px;font-size:0.8rem;line-height:28px;padding:0 10px;border:none;border-radius:4px;cursor:pointer;color:#fff;background:#0f766e';
+    btn.textContent = 'Results';
+    btn.addEventListener('click', () => onResultsRef.current?.());
+    resultsElRef.current = btn;
+  }
+
   return (
     <div style={{ position: 'relative' }}>
       <div style={{ padding: '4px 8px' }}>
@@ -85,19 +98,14 @@ export default function PlayBoard({
                 cardingEW={cardingEW}
                 onComplete={isView || isDdPlay ? undefined : onComplete}
                 onPlayerReady={isView ? (player) => { ipsControllerRef.current = player; } : undefined}
+                bottomLeftEl={!isView && !isDdPlay ? resultsElRef.current : undefined}
               />
-              {/* Play mode only: Results overlay */}
-              {!isView && !isDdPlay && onResults && (
-                <div style={{ position: 'absolute', left: 0, bottom: 12, zIndex: 3 }}>
-                  <button type="button" onClick={onResults} style={{ ...btnStyle, background: '#0f766e' }}>Results</button>
-                </div>
-              )}
               {/* View mode: persist the result box that IPS shows at deal completion */}
               {isView && <CompletionResultBox result={boardResult?.completed_result} />}
             </div>
-            {/* View / dd-play mode: buttons below IPS player */}
+            {/* Buttons below IPS player — view / dd-play mode only */}
             {(isView || isDdPlay) && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                 {isView && (
                   <button type="button" onClick={() => ipsControllerRef.current?.toggleDd()}
                     style={{ ...btnStyle, background: '#16a34a' }}>
