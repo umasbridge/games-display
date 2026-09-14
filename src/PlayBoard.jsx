@@ -50,8 +50,6 @@ export default function PlayBoard({
   const isDdPlay = mode === 'dd-play';
 
   // Strip completion fields in view/dd-play so IPS player starts fresh
-  // (completed_result causes reviewAvailable=true which shows Replay button,
-  // forces the DD button visible, and skips to the end of the recorded play)
   const ipsResult = useMemo(() => {
     if (!boardResult || (!isView && !isDdPlay)) return boardResult;
     const { completed_result, completion_user_side, completion_other_score, completion_scoring, completion_traveller_scores, ...rest } = boardResult;
