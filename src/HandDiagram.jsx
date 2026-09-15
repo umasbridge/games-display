@@ -4,6 +4,52 @@ import { IpsPlayer } from 'ips';
 const SUIT_SYM = { S: '♠', H: '♥', D: '♦', C: '♣' };
 const SUIT_CLR = { S: '#000', H: '#c62828', D: '#c62828', C: '#2e7d32' };
 
+// Derive overtricks/undertricks from score (always correct) rather than the stored
+// overtricks field, which some scrapers populate from NS perspective instead of
+// the declaring side's perspective.
+function overtricksFromScore(score, contractLevel, contractDenom, contractX, declarer, vul) {
+  if (score == null || !contractLevel || !contractDenom || !declarer) return null;
+  const isEW = 'EW'.includes(String(declarer).toUpperCase());
+  const declarerScore = isEW ? -score : score;
+  const level = parseInt(contractLevel);
+  const denom = String(contractDenom).toUpperCase();
+  const x = contractX || null;
+  const v = String(vul || '').toUpperCase().replace('-', '');
+  const declVul = v === 'ALL' || v === 'BOTH' || (isEW ? v === 'EW' : v === 'NS');
+
+  if (declarerScore > 0) {
+    // Making — reverse the bridge scoring formula to get overtricks
+    const mult = x === 'XX' ? 4 : x === 'X' ? 2 : 1;
+    const raw = denom === 'NT' ? 40 + 30 * (level - 1) : (denom === 'S' || denom === 'H') ? 30 * level : 20 * level;
+    const trickScore = raw * mult;
+    const gameBonus = trickScore >= 100 ? (declVul ? 500 : 300) : 50;
+    const slamBonus = level === 7 ? (declVul ? 1500 : 1000) : level === 6 ? (declVul ? 750 : 500) : 0;
+    const insult = x === 'XX' ? 100 : x === 'X' ? 50 : 0;
+    const base = trickScore + gameBonus + slamBonus + insult;
+    const otUnit = x === 'XX' ? (declVul ? 400 : 200) : x === 'X' ? (declVul ? 200 : 100)
+      : (denom === 'NT' || denom === 'S' || denom === 'H') ? 30 : 20;
+    return Math.round((declarerScore - base) / otUnit);
+  } else if (declarerScore < 0) {
+    // Down — reverse penalty scoring to get undertricks (negative result)
+    const pen = -declarerScore;
+    if (!x) return -(pen / (declVul ? 100 : 50));
+    // Doubled: non-vul 100/300/500/800…, vul 200/500/800/1100…
+    // Redoubled: double all doubled penalties
+    const eff = x === 'XX' ? pen / 2 : pen;
+    let n;
+    if (!declVul) n = eff <= 500 ? Math.round((eff - 100) / 200 + 1) : Math.round((eff - 500) / 300 + 3);
+    else n = Math.round((eff - 200) / 300 + 1);
+    return -n;
+  }
+  return 0;
+}
+
+function resultStrFromScore(score, contractLevel, contractDenom, contractX, declarer, vul) {
+  const ot = overtricksFromScore(score, contractLevel, contractDenom, contractX, declarer, vul);
+  if (ot == null) return '';
+  return ot === 0 ? '=' : ot > 0 ? `+${ot}` : `${ot}`;
+}
+
 function UnreadBadge({ count }) {
   if (!count) return null;
   return (
@@ -28,9 +74,7 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
   const ewParticipant = participantMap?.[result?.ew_participant_id];
 
   const scoreStr = result ? (result.score > 0 ? `+${result.score}` : `${result.score}`) : '';
-  const resultStr = result?.overtricks != null
-    ? (result.overtricks === 0 ? '=' : result.overtricks > 0 ? `+${result.overtricks}` : `${result.overtricks}`)
-    : '';
+  const resultStr = result ? resultStrFromScore(result.score, result.contract_level, result.contract_denom, result.contract_x, result.declarer, vul) : '';
 
   const mpPct = !isTeams && !isImpPairs && (result?.mp_ns != null || result?.mp_ew != null)
     ? (() => {
@@ -149,7 +193,7 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
       </div>
       <div style={{ marginTop: 2 }}>
         {fmtContractColored(otherRoom)} by {otherRoom.declarer}
-        {' '}{otherRoom.overtricks != null ? (otherRoom.overtricks === 0 ? '= ' : otherRoom.overtricks > 0 ? `+${otherRoom.overtricks} ` : `${otherRoom.overtricks} `) : ' '}
+        {' '}{resultStrFromScore(otherRoom.score, otherRoom.contract_level, otherRoom.contract_denom, otherRoom.contract_x, otherRoom.declarer, vul) || '='}{' '}
         ({otherRoom.score > 0 ? `+${otherRoom.score}` : `${otherRoom.score}`})
       </div>
     </div>
