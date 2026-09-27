@@ -363,9 +363,6 @@ function PlayBoardRow({ row, isTeams, scoring, participantMap, boardResults, our
           ? () => setPopup(popup === 'traveller' ? null : 'traveller')
           : undefined}
         onResults={() => setPopup(popup === 'results' ? null : 'results')}
-        onPlay={boardMode === 'view' || boardMode === 'dd-play'
-          ? () => setBoardMode(boardMode === 'view' ? 'dd-play' : 'view')
-          : undefined}
       />
 
       {popup === 'traveller' && (

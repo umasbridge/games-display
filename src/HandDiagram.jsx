@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
-import { IpsPlayer } from 'ips';
+import { useRef, useMemo } from 'react';
+import BridgeLibMount, { shortPlayerName, normalizeLin } from './BridgeLibMount.jsx';
+
 
 const SUIT_SYM = { S: '♠', H: '♥', D: '♦', C: '♣' };
 const SUIT_CLR = { S: '#000', H: '#c62828', D: '#c62828', C: '#2e7d32' };
@@ -64,8 +65,7 @@ function UnreadBadge({ count }) {
 }
 
 export default function HandDiagram({ board, result, otherRoom, participantMap, ourParticipantId, onOtherRoom, onTraveller, onNotes, notesLoading, notesUnread, isTeams, boardNumber, isImpPairs }) {
-  const ipsControllerRef = useRef(null);
-  const [ddPlaying, setDdPlaying] = useState(false);
+  const viewerRef = useRef(null);
   const vul = board.vulnerability;
   const invalidLead = result && hasInvalidOpeningLead(result);
   const nsTeamName = isTeams ? participantMap?.[result?.ns_participant_id]?.name : null;
@@ -145,16 +145,19 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
 
   const buttonsBlock = (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-      {!ddPlaying && (
-        <button type="button" onClick={() => ipsControllerRef.current?.toggleDd()}
-          style={{ ...btnStyle, background: '#16a34a' }}>
-          DD
-        </button>
-      )}
+      <button type="button" onClick={() => viewerRef.current?.toggleDd()}
+        style={{ ...btnStyle, background: '#16a34a' }}>
+        DD
+      </button>
       {result?.lin && (
-        <button type="button" onClick={() => setDdPlaying(p => !p)}
-          style={{ ...btnStyle, background: ddPlaying ? '#6b7280' : '#7c3aed' }}>
-          {ddPlaying ? '◀ View' : '▶ Play'}
+        <button type="button" onClick={() => import(/* @vite-ignore */ '/bridge-lib/ddplay/DDPlay.js').then(m => m.openDdPlay(
+          result.lin.replace(/mb\|ap\|/gi, 'mb|p|mb|p|mb|p|').replace(/mb\|P\|/g, 'mb|p|'),
+          result.contract_level && result.contract_denom
+            ? `${result.contract_level}${result.contract_denom}${result.contract_x || ''} by ${result.declarer || ''}`
+            : undefined
+        ))}
+          style={{ ...btnStyle, background: '#7c3aed' }}>
+          DD Play
         </button>
       )}
       {onTraveller && (
@@ -199,20 +202,33 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
     </div>
   );
 
-  const ipsBoardResult = result ? {
-    ...result,
-    dealer: result.dealer || board.dealer,
-    vulnerability: result.vulnerability || board.vulnerability,
-    player_n_name: result.player_n_name || nsParticipant?.roster?.[0]?.name || nsParticipant?.name,
-    player_s_name: result.player_s_name || nsParticipant?.roster?.[1]?.name || nsParticipant?.name,
-    player_e_name: result.player_e_name || ewParticipant?.roster?.[0]?.name || ewParticipant?.name,
-    player_w_name: result.player_w_name || ewParticipant?.roster?.[1]?.name || ewParticipant?.name,
-  } : null;
+  // DealViewer shows the deal and steps through the recorded play; the result
+  // and other-room boxes are overlaid by this component.
+  const hasOtherRoomBlock = !!otherRoomBlock;
+  const viewerOptions = useMemo(() => {
+    if (!result?.lin) return null;
+    return {
+      lin: normalizeLin(result.lin),
+      lead: result.lead || (result.lead_suit && result.lead_rank
+        ? `${result.lead_suit}${String(result.lead_rank).replace('10', 'T')}` : null),
+      contract: result.contract_level && result.contract_denom
+        ? `${result.contract_level}${result.contract_denom}${result.contract_x || ''}` : null,
+      declarer: result.declarer || null,
+      vulnerability: result.vulnerability || board.vulnerability,
+      playerNames: {
+        N: shortPlayerName(result.player_n_name || nsParticipant?.roster?.[0]?.name || nsParticipant?.name),
+        S: shortPlayerName(result.player_s_name || nsParticipant?.roster?.[1]?.name || nsParticipant?.name),
+        E: shortPlayerName(result.player_e_name || ewParticipant?.roster?.[0]?.name || ewParticipant?.name),
+        W: shortPlayerName(result.player_w_name || ewParticipant?.roster?.[1]?.name || ewParticipant?.name),
+      },
+      bottomLeftHtml: '',
+      showResult: false,
+      topRightOffset: hasOtherRoomBlock ? 72 : 0,
+    };
+  }, [result, board.vulnerability, nsParticipant, ewParticipant, hasOtherRoomBlock]);
 
-  const ipsPlayer = ipsBoardResult?.lin
-    ? ddPlaying
-      ? <IpsPlayer boardResult={ipsBoardResult} mode="play" ddPlay autoStart hideDdButton direction={result?.declarer || 'S'} topRightOffset={otherRoomBlock ? 72 : 0} onPlayerReady={player => { ipsControllerRef.current = player; }} />
-      : <IpsPlayer boardResult={ipsBoardResult} mode="view" topRightOffset={otherRoomBlock ? 72 : 0} hideDdButton onPlayerReady={player => { ipsControllerRef.current = player; }} />
+  const dealViewer = viewerOptions
+    ? <BridgeLibMount kind="viewer" options={viewerOptions} controllerRef={viewerRef} />
     : <div style={{ color: '#9ca3af', fontSize: '0.85rem', padding: '12px 0' }}>No play data available.</div>;
 
   return (
@@ -232,7 +248,7 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
         </div>
       )}
       <div style={{ position: 'relative', width: 478, maxWidth: '100%' }}>
-        {ipsPlayer}
+        {dealViewer}
         <div style={{ position: 'absolute', left: 0, bottom: 12, maxWidth: '34%', fontSize: '0.8rem', zIndex: 3 }}>
           {invalidLead && (
             <div style={{ color: '#dc2626', fontWeight: 700, marginBottom: 3, whiteSpace: 'nowrap' }}>
