@@ -284,7 +284,10 @@ function PlayBoardRow({ row, isTeams, scoring, participantMap, boardResults, our
 
   if (!row.board) return null;
 
-  const result = row.result;
+  // In teams the row defaults to the open room; show the room the chosen player sat in.
+  const playerInOtherRoom = isTeams && selectedPlayer && row.otherRoom
+    && !getPlayerDirection(row.result, selectedPlayer) && getPlayerDirection(row.otherRoom, selectedPlayer);
+  const result = playerInOtherRoom ? row.otherRoom : row.result;
   const boardNumber = row.board.board_number;
   const completedResult = playedResults?.[row.board.id] || null;
   const boardCompleted = !!completedResult;
@@ -320,7 +323,7 @@ function PlayBoardRow({ row, isTeams, scoring, participantMap, boardResults, our
   const selectedParticipantId = selectedSide === 'NS'
     ? result?.ns_participant_id
     : result?.ew_participant_id;
-  const otherRoom = row.otherRoom;
+  const otherRoom = playerInOtherRoom ? row.result : row.otherRoom;
   const otherRoomScore = otherRoom && selectedParticipantId
     ? (otherRoom.ns_participant_id === selectedParticipantId
       ? Number(otherRoom.score || 0)
@@ -333,16 +336,19 @@ function PlayBoardRow({ row, isTeams, scoring, participantMap, boardResults, our
   const boardResult = useMemo(() => result ? {
     ...result,
     lin: normalizeLinForIps(result.lin),
+    vulnerability: result.vulnerability ?? row.board.vulnerability,
     player_n_name: result.player_n_name || nsRoster[0] || undefined,
     player_s_name: result.player_s_name || nsRoster[1] || undefined,
     player_e_name: result.player_e_name || ewRoster[0] || undefined,
     player_w_name: result.player_w_name || ewRoster[1] || undefined,
     completion_user_side: selectedSide,
     completion_other_score: otherRoomScore,
+    completion_other_room: isTeams ? otherRoom : undefined,
+    completion_team_name: isTeams ? participantMap?.[selectedParticipantId]?.name?.replace(/\s*&\s*$/, '').trim() : undefined,
     completion_scoring: isTeams || String(scoring || '').toLowerCase().includes('imp') ? 'IMP' : 'MP',
     completion_traveller_scores: isTeams ? undefined : travellerScores,
     completed_result: completedResult,
-  } : null, [result, selectedSide, otherRoomScore, isTeams, scoring, boardResults, completedResult, participantMap]);
+  } : null, [result, selectedSide, otherRoomScore, isTeams, scoring, boardResults, completedResult, participantMap, otherRoom, selectedParticipantId]);
 
   return (
     <div className="relative">

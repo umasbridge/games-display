@@ -4,6 +4,7 @@ import BridgeLibMount, { shortPlayerName, normalizeLin } from './BridgeLibMount.
 
 const SUIT_SYM = { S: '♠', H: '♥', D: '♦', C: '♣' };
 const SUIT_CLR = { S: '#000', H: '#c62828', D: '#c62828', C: '#2e7d32' };
+const SEAT_NAME = { N: 'North', E: 'East', S: 'South', W: 'West' };
 
 // Derive overtricks/undertricks from score (always correct) rather than the stored
 // overtricks field, which some scrapers populate from NS perspective instead of
@@ -45,7 +46,7 @@ function overtricksFromScore(score, contractLevel, contractDenom, contractX, dec
   return 0;
 }
 
-function resultStrFromScore(score, contractLevel, contractDenom, contractX, declarer, vul) {
+export function resultStrFromScore(score, contractLevel, contractDenom, contractX, declarer, vul) {
   const ot = overtricksFromScore(score, contractLevel, contractDenom, contractX, declarer, vul);
   if (ot == null) return '';
   return ot === 0 ? '=' : ot > 0 ? `+${ot}` : `${ot}`;
@@ -64,15 +65,10 @@ function UnreadBadge({ count }) {
   );
 }
 
-export default function HandDiagram({ board, result, otherRoom, participantMap, ourParticipantId, onOtherRoom, onTraveller, onNotes, notesLoading, notesUnread, isTeams, boardNumber, isImpPairs }) {
-  const viewerRef = useRef(null);
+// Score line shared by the on-screen diagram and the PDF export: result vs contract,
+// signed score, and our MP% or IMPs depending on the event type.
+export function resultSummary({ board, result, otherRoom, ourParticipantId, isTeams, isImpPairs }) {
   const vul = board.vulnerability;
-  const invalidLead = result && hasInvalidOpeningLead(result);
-  const nsTeamName = isTeams ? participantMap?.[result?.ns_participant_id]?.name : null;
-  const ewTeamName = isTeams ? participantMap?.[result?.ew_participant_id]?.name : null;
-  const nsParticipant = participantMap?.[result?.ns_participant_id];
-  const ewParticipant = participantMap?.[result?.ew_participant_id];
-
   const scoreStr = result ? (result.score > 0 ? `+${result.score}` : `${result.score}`) : '';
   const resultStr = result ? resultStrFromScore(result.score, result.contract_level, result.contract_denom, result.contract_x, result.declarer, vul) : '';
 
@@ -115,6 +111,28 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
       ? result.mp_ew
       : result.mp_ns;
   }
+
+  return { scoreStr, resultStr, mpPct, boardImps };
+}
+
+export function playerNames(result, participantMap) {
+  const nsParticipant = participantMap?.[result?.ns_participant_id];
+  const ewParticipant = participantMap?.[result?.ew_participant_id];
+  return {
+    N: shortPlayerName(result?.player_n_name || nsParticipant?.roster?.[0]?.name || nsParticipant?.name),
+    S: shortPlayerName(result?.player_s_name || nsParticipant?.roster?.[1]?.name || nsParticipant?.name),
+    E: shortPlayerName(result?.player_e_name || ewParticipant?.roster?.[0]?.name || ewParticipant?.name),
+    W: shortPlayerName(result?.player_w_name || ewParticipant?.roster?.[1]?.name || ewParticipant?.name),
+  };
+}
+
+export default function HandDiagram({ board, result, otherRoom, participantMap, ourParticipantId, onOtherRoom, onTraveller, onNotes, notesLoading, notesUnread, isTeams, boardNumber, isImpPairs }) {
+  const viewerRef = useRef(null);
+  const vul = board.vulnerability;
+  const invalidLead = result && hasInvalidOpeningLead(result);
+  const nsTeamName = isTeams ? participantMap?.[result?.ns_participant_id]?.name : null;
+  const ewTeamName = isTeams ? participantMap?.[result?.ew_participant_id]?.name : null;
+  const { scoreStr, resultStr, mpPct, boardImps } = resultSummary({ board, result, otherRoom, ourParticipantId, isTeams, isImpPairs });
 
   const resultBlock = result && (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 5, padding: '4px 8px', marginTop: 4 }}>
@@ -205,6 +223,14 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
   // DealViewer shows the deal and steps through the recorded play; the result
   // and other-room boxes are overlaid by this component.
   const hasOtherRoomBlock = !!otherRoomBlock;
+  // The dealer is marked on their name tag (as in the PDF export) rather than in a
+  // separate "Dlr" line. DealViewer escapes names, so the mark is a circled-D character.
+  const names = useMemo(() => {
+    const n = playerNames(result, participantMap);
+    const dealer = String(board.dealer || '').toUpperCase();
+    if (n[dealer] !== undefined) n[dealer] = `Ⓓ ${n[dealer] || SEAT_NAME[dealer]}`;
+    return n;
+  }, [result, participantMap, board.dealer]);
   const viewerOptions = useMemo(() => {
     if (!result?.lin) return null;
     return {
@@ -215,17 +241,12 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
         ? `${result.contract_level}${result.contract_denom}${result.contract_x || ''}` : null,
       declarer: result.declarer || null,
       vulnerability: result.vulnerability || board.vulnerability,
-      playerNames: {
-        N: shortPlayerName(result.player_n_name || nsParticipant?.roster?.[0]?.name || nsParticipant?.name),
-        S: shortPlayerName(result.player_s_name || nsParticipant?.roster?.[1]?.name || nsParticipant?.name),
-        E: shortPlayerName(result.player_e_name || ewParticipant?.roster?.[0]?.name || ewParticipant?.name),
-        W: shortPlayerName(result.player_w_name || ewParticipant?.roster?.[1]?.name || ewParticipant?.name),
-      },
+      playerNames: names,
       bottomLeftHtml: '',
       showResult: false,
       topRightOffset: hasOtherRoomBlock ? 72 : 0,
     };
-  }, [result, board.vulnerability, nsParticipant, ewParticipant, hasOtherRoomBlock]);
+  }, [result, board.vulnerability, names, hasOtherRoomBlock]);
 
   const dealViewer = viewerOptions
     ? <BridgeLibMount kind="viewer" options={viewerOptions} controllerRef={viewerRef} />
@@ -242,9 +263,6 @@ export default function HandDiagram({ board, result, otherRoom, participantMap, 
           {isTeams && ewTeamName && (
             <span style={{ marginLeft: 10, fontWeight: 500 }}>EW = {ewTeamName}</span>
           )}
-          <span className="md:hidden" style={{ fontWeight: 400, fontSize: '0.7rem', color: '#6b7280', marginLeft: 6 }}>
-            Dlr {board.dealer} · Vul {vul === 'none' ? 'Nil' : vul === 'both' ? 'All' : vul.toUpperCase()}
-          </span>
         </div>
       )}
       <div style={{ position: 'relative', width: 478, maxWidth: '100%' }}>

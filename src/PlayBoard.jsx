@@ -1,6 +1,7 @@
 import { useRef, useEffect, useMemo, useState } from 'react';
 import { completionSummary } from './playScoring.js';
 import BridgeLibMount, { shortPlayerName, normalizeLin } from './BridgeLibMount.jsx';
+import { resultStrFromScore } from './HandDiagram.jsx';
 
 // Play mode: the user plays in BridgePlayer (computer plays the other seats).
 // View mode: DealViewer shows the deal and steps through the table's recorded play.
@@ -11,13 +12,28 @@ const SUIT_SYM = { S: '♠', H: '♥', D: '♦', C: '♣' };
 const SUIT_HEX = { H: '#c0241c', D: '#c0241c', S: '#111', C: '#2a7d0e' };
 const PARTNER = { N: 'S', S: 'N', E: 'W', W: 'E' };
 
-function CompletionResultBox({ result }) {
+function ContractText({ level, denom, doubled, declarer, resultText }) {
+  const d = String(denom || '').toUpperCase();
+  const code = d === 'NT' ? 'N' : d;
+  return <>
+    {level}<span style={{ color: SUIT_HEX[code] || '#111' }}>{code === 'N' ? 'NT' : (SUIT_SYM[code] || d)}</span>{doubled || ''}
+    {' '}{declarer}{' '}{resultText}
+  </>;
+}
+
+// otherRoom: the other table's bg_board_results row (teams); teamName: the user's team.
+function CompletionResultBox({ result, otherRoom, vulnerability, teamName }) {
   if (!result) return null;
-  const denomDisplay = result.denomCode === 'N' ? 'NT' : (SUIT_SYM[result.denomCode] || result.denomCode);
-  const denomColor = SUIT_HEX[result.denomCode] || '#111';
   const comparison = result.imps != null
     ? ` (IMPs = ${result.imps > 0 ? '+' : ''}${result.imps})`
     : result.mpPercent != null ? ` (MP% = ${result.mpPercent})` : '';
+  const otherText = otherRoom && (otherRoom.passed_out
+    ? 'Passed out'
+    : <ContractText level={otherRoom.contract_level} denom={otherRoom.contract_denom} doubled={otherRoom.contract_x}
+        declarer={otherRoom.declarer}
+        resultText={resultStrFromScore(otherRoom.score, otherRoom.contract_level, otherRoom.contract_denom,
+          otherRoom.contract_x, otherRoom.declarer, vulnerability) || '='} />);
+  const impColor = result.imps > 0 ? '#15803d' : result.imps < 0 ? '#dc2626' : '#6b7280';
   return (
     <div style={{
       display: 'inline-block', boxSizing: 'border-box', minWidth: 108, marginTop: 6,
@@ -26,13 +42,19 @@ function CompletionResultBox({ result }) {
       fontFamily: 'ui-sans-serif, system-ui', fontSize: '0.82rem', fontWeight: 700,
     }}>
       <div>
-        Result: {result.level}
-        <span style={{ color: denomColor }}>{denomDisplay}</span>
-        {result.doubled} {result.declarer} {result.resultText}
+        Result: <ContractText level={result.level} denom={result.denomCode} doubled={result.doubled}
+          declarer={result.declarer} resultText={result.resultText} />
       </div>
-      <div style={{ marginTop: 2, fontWeight: 600 }}>
-        Score: {result.score > 0 ? '+' : ''}{result.score}{comparison}
-      </div>
+      {otherText && <div style={{ marginTop: 2, fontWeight: 600 }}>Other room: {otherText}</div>}
+      {otherRoom && result.imps != null ? (
+        <div style={{ marginTop: 2, fontWeight: 700, color: impColor }}>
+          {result.imps > 0 ? '+' : ''}{result.imps} IMPs{teamName ? ` to ${teamName}` : ''}
+        </div>
+      ) : (
+        <div style={{ marginTop: 2, fontWeight: 600 }}>
+          Score: {result.score > 0 ? '+' : ''}{result.score}{comparison}
+        </div>
+      )}
     </div>
   );
 }
@@ -104,6 +126,7 @@ export default function PlayBoard({
       visibleSeats,
       preplayLead: 'computer',
       pauseAfterTrick: true,
+      pauseAtEnd: true,
       cardingNS: cardingNS || 'UDCA',
       cardingEW: cardingEW || 'UDCA',
       onComplete: ({ contractData, declarerTricks }) => {
@@ -153,7 +176,9 @@ export default function PlayBoard({
           <>
             <BridgeLibMount kind={isView ? 'viewer' : 'player'} options={options} controllerRef={controllerRef} />
             {/* The result is only shown once the board is done (view mode), never during play. */}
-            {isView && <div><CompletionResultBox result={boardResult?.completed_result} /></div>}
+            {isView && <div><CompletionResultBox result={boardResult?.completed_result}
+              otherRoom={boardResult?.completion_other_room} vulnerability={boardResult?.vulnerability}
+              teamName={boardResult?.completion_team_name} /></div>}
             <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
               {isView && (
                 <button type="button" onClick={toggleDd}

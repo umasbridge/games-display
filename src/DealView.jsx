@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import HandDiagram from './HandDiagram.jsx';
+import HandDiagram, { resultSummary, playerNames } from './HandDiagram.jsx';
+import { printDealSheet } from './dealSheet.js';
 import { TravellerTable } from './TravellerTable.jsx';
 import { buildTeamRows, buildPairRows } from './boardUtils.js';
 
@@ -12,6 +13,7 @@ export default function DealView({ supabase, analysis, userId, onBack, Discussio
   const [activePopup, setActivePopup] = useState(null); // { boardId, type }
   const [notesDiscussions, setNotesDiscussions] = useState({});
   const [notesLoading, setNotesLoading] = useState({});
+  const [showDownload, setShowDownload] = useState(false);
 
   const event = analysis.bg_events;
   const tournament = event?.bg_tournaments;
@@ -223,16 +225,81 @@ export default function DealView({ supabase, analysis, userId, onBack, Discussio
     });
   }, [normalizedRows, resultsByBoard, filters.match_keys]);
 
+  const boardIsImpPairs = (boardResults) => !isTeams && (
+    scoringKey.includes('imp')
+    || scoringKey.includes('butler')
+    || boardResults.some(r => r.imps_ns != null || Number(r.mp_ns) < 0 || Number(r.mp_ew) < 0)
+  );
+
+  // Notes for each board, keyed by board id: the non-deleted messages of the board's
+  // notes discussion, oldest first. Boards whose discussion has no messages are left out.
+  const fetchBoardNotes = async () => {
+    const resourceIds = displayBoards.filter(db => db.board).map(db => `${analysis.id}:${db.board.id}`);
+    if (!resourceIds.length) return {};
+    const { data: discs, error } = await supabase
+      .from('discussions')
+      .select('id, resource_id')
+      .eq('resource_type', 'game_board')
+      .in('resource_id', resourceIds);
+    if (error) throw error;
+    if (!discs?.length) return {};
+    const { data: msgs, error: msgErr } = await supabase
+      .from('discussion_messages')
+      .select('discussion_id, content, created_at')
+      .in('discussion_id', discs.map(d => d.id))
+      .eq('deleted', false)
+      .order('created_at');
+    if (msgErr) throw msgErr;
+    const boardByDisc = Object.fromEntries(discs.map(d => [d.id, d.resource_id.split(':')[1]]));
+    const notes = {};
+    for (const m of msgs || []) {
+      const boardId = boardByDisc[m.discussion_id];
+      if (boardId && m.content?.trim()) (notes[boardId] ||= []).push(m.content.trim());
+    }
+    return notes;
+  };
+
+  const handleDownload = async ({ perTable, notesOnly, win }) => {
+    const notes = await fetchBoardNotes();
+    const ourId = filters.participant_id;
+    const size = perTable || displayBoards.length;
+    const groups = [];
+    for (let i = 0; i < displayBoards.length; i += size) {
+      const chunk = displayBoards.slice(i, i + size).filter(db => db.board);
+      const deals = chunk
+        .filter(db => !notesOnly || notes[db.board.id]?.length)
+        .map(db => ({
+          board: db.board,
+          result: db.result,
+          names: playerNames(db.result, participantMap),
+          summary: resultSummary({
+            board: db.board, result: db.result, otherRoom: db.otherRoom, ourParticipantId: ourId,
+            isTeams: effectiveIsTeams, isImpPairs: boardIsImpPairs(db.boardResults),
+          }),
+          notes: notes[db.board.id] || [],
+        }));
+      if (!deals.length) continue;
+      const oppIds = new Set(chunk.map(db => db.matchOpponentId
+        ?? (ourId && db.result ? (db.result.ns_participant_id === ourId ? db.result.ew_participant_id : db.result.ns_participant_id) : null)));
+      const oppName = oppIds.size === 1 ? (participantMap[[...oppIds][0]]?.name || '').replace(/\s*&\s*$/, '').trim() : '';
+      const first = chunk[0].boardNumber, last = chunk[chunk.length - 1].boardNumber;
+      const round = perTable ? `R${i / size + 1}` : null;
+      groups.push({
+        round,
+        heading: `${analysis.name}${round ? ` — ${round}` : ''} · Boards ${first}${last !== first ? `–${last}` : ''}${oppName ? ` vs ${oppName}` : ''}`,
+        deals,
+      });
+    }
+    if (!groups.length) { win.close(); alert(notesOnly ? 'No deals with notes.' : 'No deals to download.'); return; }
+    printDealSheet(win, groups.length === 1 && groups[0].round ? `${analysis.name}_${groups[0].round}` : analysis.name, groups);
+  };
+
   const renderBoard = (displayBoard) => {
     const { board, result, otherRoom, boardNumber, boardResults } = displayBoard;
     if (!board) return null;
     const boardId = board.id;
     const popupType = activePopup?.boardId === boardId ? activePopup.type : null;
-    const isImpPairs = !isTeams && (
-      scoringKey.includes('imp')
-      || scoringKey.includes('butler')
-      || boardResults.some(r => r.imps_ns != null || Number(r.mp_ns) < 0 || Number(r.mp_ew) < 0)
-    );
+    const isImpPairs = boardIsImpPairs(boardResults);
 
     return (
       <div key={`${boardId}:${result?.id}`} className="border-b-2 border-gray-400 relative mb-3 pb-2">
@@ -296,22 +363,38 @@ export default function DealView({ supabase, analysis, userId, onBack, Discussio
 
   return (
     <div className="bg-white min-h-screen">
-      <div className="border-b border-gray-200 px-3 py-2 flex items-center gap-2">
-        <button onClick={onBack} className="px-2 py-0.5 text-xs border border-gray-300 rounded hover:bg-gray-50">
-          &larr; Back
-        </button>
-        <div>
-          <h1 className="text-sm font-bold">{analysis.name}</h1>
-          <p className="text-xs text-gray-500">
-            {filters.board_ids?.length > 0
-              ? `${filters.query_label || 'Smart query'} · ${displayBoards.length} boards`
-              : filters.stage_ids?.length > 1
-              ? `${filters.stage_ids.length} stages · ${displayBoards.length} boards`
-              : `${tournament?.name} · ${displayBoards.length} boards`
-            }
-          </p>
+      <div className="border-b border-gray-200 px-3 py-2">
+        {/* 482 = diagram width (478) + board padding (16) - header padding (12), so the
+            Download button lines up with the East hand on desktop. */}
+        <div className="flex items-center gap-2" style={{ maxWidth: 482 }}>
+          <button onClick={onBack} className="px-2 py-0.5 text-xs border border-gray-300 rounded hover:bg-gray-50">
+            &larr; Back
+          </button>
+          <div>
+            <h1 className="text-sm font-bold">{analysis.name}</h1>
+            <p className="text-xs text-gray-500">
+              {filters.board_ids?.length > 0
+                ? `${filters.query_label || 'Smart query'} · ${displayBoards.length} boards`
+                : filters.stage_ids?.length > 1
+                ? `${filters.stage_ids.length} stages · ${displayBoards.length} boards`
+                : `${tournament?.name} · ${displayBoards.length} boards`
+              }
+            </p>
+          </div>
+          {displayBoards.length > 0 && (
+            <button onClick={() => setShowDownload(true)} style={{ marginLeft: 'auto', alignSelf: 'flex-start', background: '#2563eb', color: '#fff', borderColor: '#2563eb' }} className="px-2 py-0.5 text-xs border rounded font-semibold">
+              Download
+            </button>
+          )}
         </div>
       </div>
+
+      {showDownload && (
+        <DownloadDialog
+          onClose={() => setShowDownload(false)}
+          onDownload={handleDownload}
+        />
+      )}
 
       <div className="px-2 py-2">
         {displayBoards.length === 0 ? (
@@ -349,6 +432,62 @@ export default function DealView({ supabase, analysis, userId, onBack, Discussio
           displayBoards.map(renderBoard)
         )}
       </div>
+    </div>
+  );
+}
+
+
+function DownloadDialog({ onClose, onDownload }) {
+  const [perTable, setPerTable] = useState('6');
+  const [all, setAll] = useState(false);
+  const [notesOnly, setNotesOnly] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const count = parseInt(perTable, 10);
+  const valid = all || count > 0;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!valid || busy) return;
+    // Open the print window now, while the click still counts as a user gesture;
+    // opening it after the notes fetch would be blocked as a pop-up.
+    const win = window.open('', '_blank');
+    if (!win) { alert('Please allow pop-ups for this site to download the PDF.'); return; }
+    setBusy(true);
+    try {
+      await onDownload({ perTable: all ? null : count, notesOnly, win });
+      onClose();
+    } catch (err) {
+      win.close();
+      console.error('Download error:', err);
+      alert('Download error: ' + err.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={onClose}>
+      <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="bg-white rounded shadow-lg p-4 w-72 text-sm">
+        <div className="font-bold mb-3">Download deals</div>
+        <label className="block mb-1 text-gray-700">How many boards at a time?</label>
+        <div className="flex items-center gap-3 mb-3">
+          <input type="number" min="1" value={perTable} disabled={all} autoFocus
+            onChange={(e) => setPerTable(e.target.value)}
+            className="w-16 border border-gray-300 rounded px-2 py-0.5 disabled:bg-gray-100 disabled:text-gray-400" />
+          <label className="flex items-center gap-1">
+            <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> All
+          </label>
+        </div>
+        <label className="flex items-center gap-2 mb-4">
+          <input type="checkbox" checked={notesOnly} onChange={(e) => setNotesOnly(e.target.checked)} />
+          Pull only deals with notes?
+        </label>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50">Cancel</button>
+          <button type="submit" disabled={!valid || busy} className="px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-50">
+            {busy ? 'Preparing…' : 'Download'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
